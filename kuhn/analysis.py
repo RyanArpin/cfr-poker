@@ -40,7 +40,8 @@ def best_response_value(
     game      : KuhnPoker,
     strategy  : dict[str, dict[str, float]],
     br_player : int,
-) -> float:
+    return_info: bool = False,
+) -> float | tuple[float, dict]:
     """
     Value achieved by br_player playing a best response against strategy.
     Returns value from Player 1's perspective.
@@ -85,7 +86,22 @@ def best_response_value(
     total = 0.0
     for p1_card, p2_card in game.get_all_deals():
         total += _eval_state("", p1_card, p2_card, full_strategy)
-    return total / 6
+    value = total / 6
+
+    if not return_info:
+        return value
+
+    # Compute per-infoset spread (max_avg - min_avg) for reporting.
+    spreads: dict[str, float] = {}
+    for key, action_vals in infoset_values.items():
+        reach = infoset_reach[key]
+        if reach < 1e-12:
+            spreads[key] = 0.0
+            continue
+        avg_vals = [v / reach for v in action_vals.values()]
+        spreads[key] = max(avg_vals) - min(avg_vals)
+
+    return value, spreads
 
 
 def _accumulate_br_values(
@@ -121,6 +137,7 @@ def _accumulate_br_values(
         for action in actions:
             infoset_values[key][action] += reach_opp * action_vals[action]
         infoset_reach[key] += reach_opp
+        # Original behavior: return the average over actions for this deal.
         return sum(action_vals[a] / len(actions) for a in actions)
     else:
         total = 0.0
@@ -163,12 +180,14 @@ def exploitability(
 ) -> float:
     """
     Total exploitability of a strategy profile. Zero at Nash equilibrium.
+
+    Exploitability = BR_1_value − BR_2_value, which equals the sum of
+    per-player gains from deviating to their best responses.  At Nash
+    equilibrium both values equal the Nash EV, so the difference is 0.
     """
     p1_br_val = best_response_value(game, strategy, br_player=0)
     p2_br_val = best_response_value(game, strategy, br_player=1)
-    p1_gain   = p1_br_val  - KUHN_GAME_VALUE
-    p2_gain   = -p2_br_val - (-KUHN_GAME_VALUE)
-    return p1_gain + p2_gain
+    return p1_br_val - p2_br_val
 
 
 def train_and_track(
@@ -228,7 +247,11 @@ def plot_convergence(
         fontsize=13, fontweight="bold", y=0.98,
     )
 
-    ax1.plot(iteration_points, exploit_values,
+    # Clip to a small positive floor before log scaling — exploitability can
+    # dip slightly below zero at very low iteration counts before the average
+    # strategy has stabilised enough for the BR traversal to be accurate.
+    exploit_plot = [max(v, 1e-6) for v in exploit_values]
+    ax1.plot(iteration_points, exploit_plot,
              color="#2563eb", linewidth=2, label="Exploitability e(σ)")
     ax1.axhline(y=0, color="#dc2626", linestyle="--", linewidth=1.2,
                 label="Nash equilibrium (e = 0)")
@@ -271,7 +294,21 @@ def plot_strategy_heatmap(
         "K:c", "Q:c", "J:c",
     ]
 
-    matrix = np.array([list(strategy[k].values()) for k in ordered_keys])
+    # Build rows defensively in case some infosets are missing from the
+    # strategy (trainer may not have visited every infoset). Fill missing
+    # rows with a uniform distribution over legal actions so plotting
+    # doesn't raise KeyError.
+    rows = []
+    for k in ordered_keys:
+        if k in strategy:
+            rows.append(list(strategy[k].values()))
+        else:
+            history = k.split(":", 1)[1]
+            actions = get_legal_actions(history)
+            n = len(actions)
+            rows.append([1.0 / n] * n)
+
+    matrix = np.array(rows)
 
     fig, ax = plt.subplots(figsize=(7, 9))
     im = ax.imshow(matrix, cmap="RdYlGn", vmin=0, vmax=1, aspect="auto")

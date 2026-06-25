@@ -1,68 +1,40 @@
 # CFR Poker Solver
 
-Counterfactual Regret Minimization (CFR) implemented from scratch in Python, progressing from Kuhn Poker through Leduc Poker to Heads-Up Texas Hold'em. Final product is a deployed interactive web app where you can query GTO strategies at any decision point.
+Counterfactual Regret Minimization (CFR) implemented from scratch in Python, following Zinkevich et al. (2007) "Regret Minimization in Games with Incomplete Information." The project builds through three poker variants of increasing complexity — Kuhn Poker → Leduc Poker → Heads-Up Hold'em — and ends as a deployed interactive web app.
 
----
-
-## Live Demo
-
-> *Coming in Phase 7 — React frontend + FastAPI backend, deployed on Vercel and Render*
+**Student project:** First year Honours Applied Mathematics, University of Waterloo.
 
 ---
 
 ## What is CFR?
 
-Counterfactual Regret Minimization is the algorithm behind modern poker solvers (PioSOLVER, GTO+, Solver used by GGPoker). It was introduced by Zinkevich, Johanson, Bowling, and Piccione in their 2007 NeurIPS paper:
+CFR is the algorithm behind modern poker solvers (PioSOLVER, GTO+, etc.). The idea: play a game thousands of times, track how much you *regret* not having taken a different action at each decision point, and shift your strategy toward actions you regret not taking. The average strategy over all iterations converges to a Nash equilibrium — proven in Theorem 3 of Zinkevich et al.
 
-> Zinkevich, M., Johanson, M., Bowling, M., & Piccione, C. (2007). **Regret Minimization in Games with Incomplete Information.** *Advances in Neural Information Processing Systems 20 (NeurIPS 2007).*
-
-The core idea: play a game thousands of times, track how much you *regret* not having taken a different action at each decision point, and gradually shift your strategy toward actions you regret not taking. The theoretical guarantee (Theorem 3 in the paper) is that the **average strategy** over all iterations converges to a Nash equilibrium — a strategy neither player can improve by deviating.
-
----
-
-## The Algorithm
-
-### Notation (following Zinkevich et al.)
+### Core notation (following the paper)
 
 | Symbol | Meaning |
 |---|---|
 | `I` | Information set — all game states a player cannot distinguish |
 | `σ(I, a)` | Strategy: probability of taking action `a` at infoset `I` |
-| `π^σ(h)` | Reach probability of history `h` under strategy `σ` |
-| `π^σ_{-i}(h)` | Counterfactual reach: opponent's contribution to reach prob |
+| `π^σ_{-i}(I)` | Counterfactual reach: opponent's contribution to reaching `I` |
 | `R^T_i(I, a)` | Cumulative counterfactual regret for action `a` at infoset `I` |
-| `σ̄^T_i` | Average strategy over `T` iterations — converges to Nash |
+| `σ̄^T_i` | Average strategy over `T` iterations — this converges to Nash |
 
-### Regret Matching (the core update rule)
-
-At each infoset, the current strategy is derived from accumulated regrets:
+### Regret matching
 
 ```
 σ(I, a) = R⁺(I, a) / Σ_b R⁺(I, b)
 ```
 
-where `R⁺(I, a) = max(R(I, a), 0)`. If all regrets are non-positive, play uniformly.
+where `R⁺ = max(R, 0)`. If all regrets are non-positive, play uniformly.
 
-### Counterfactual Regret Update (Equation 5 in the paper)
+### Two-pass design (correctness requirement)
 
-After each traversal, regrets are updated as:
+All nodes must see the **same strategy profile** within one iteration. Updating regrets mid-sweep makes each iteration order-dependent. This implementation uses a strict two-pass design:
 
-```
-R^{T+1}(I, a) += π^σ_{-i}(I) · (v_σ(I, a) - v_σ(I))
-```
-
-The opponent's reach probability `π^σ_{-i}` weights the regret — this is the "counterfactual" part. We ask: *if I had always reached this infoset, how much would I regret not taking action `a`?*
-
-### Two-Pass Design (correctness requirement)
-
-A subtle but critical implementation detail: all nodes must use the **same strategy profile** within a single iteration. Updating regrets mid-sweep causes later deals to see a different strategy than earlier ones, making each iteration order-dependent.
-
-This implementation uses a strict two-pass design per iteration:
 1. **Freeze** the current strategy profile as a snapshot
-2. **Collect** all regret and strategy updates across all deals without writing to nodes
+2. **Collect** all regret and strategy deltas across all deals — without writing to nodes
 3. **Apply** all updates atomically after the full sweep
-
-This matches the simultaneous-update semantics described in Zinkevich et al.
 
 ---
 
@@ -72,38 +44,71 @@ This matches the simultaneous-update semantics described in Zinkevich et al.
 cfr-poker/
 ├── kuhn/
 │   ├── kuhn_poker.py     # Game environment: rules, payoffs, infoset keys
-│   ├── cfr.py            # CFR algorithm: Node class, CFRTrainer, Nash reference
-│   ├── analysis.py       # Exploitability computation and convergence plots
+│   ├── cfr.py            # CFR algorithm: Node, CFRTrainer, Nash reference values
+│   ├── analysis.py       # Exploitability, best response, convergence plots
 │   └── plots/
 │       ├── convergence.png
 │       └── strategy_heatmap.png
-├── leduc/                # Phase 4 — coming soon
-├── holdem/               # Phase 5 — coming soon
+├── leduc/
+│   ├── leduc_poker.py    # Game environment: 2-round, community card, pair logic
+│   ├── cfr.py            # LeducCFRTrainer with chance-node enumeration
+│   ├── analysis.py       # Exploitability, strategy heatmaps, community card effect
+│   └── plots/
+│       ├── convergence.png
+│       ├── strategy_by_round.png
+│       └── community_card_effect.png
+├── holdem/               # Phase 5 — Monte Carlo CFR
 ├── backend/              # Phase 6 — FastAPI REST API
 ├── tests/
 │   ├── test_kuhn_poker.py    # 34 tests — game environment
-│   └── test_cfr_trainer.py   # 21 tests — CFR algorithm and convergence
+│   └── test_cfr_trainer.py   # 18 tests — CFR algorithm and Nash convergence
+├── requirements.txt
 └── README.md
 ```
 
 ---
 
+## Setup
+
+```bash
+git clone https://github.com/RyanArpin/cfr-poker.git
+cd cfr-poker
+python3 -m venv venv
+source venv/bin/activate   # Windows WSL: source venv/bin/activate
+pip install -r requirements.txt
+```
+
+> Always run scripts from the project root with `PYTHONPATH=.` to avoid import errors.
+
+---
+
 ## Phase 1 — Kuhn Poker Environment
 
-Kuhn Poker is a 3-card, 2-player poker variant introduced by Harold Kuhn in 1950. It is the simplest non-trivial poker game and the standard benchmark for testing game-theoretic algorithms.
+Kuhn Poker is the simplest non-trivial poker game, introduced by Harold Kuhn (1950) and the standard CFR benchmark.
 
 **Rules:**
-- Deck: Jack (J), Queen (Q), King (K). Each player receives one card; one is burned.
-- Both players ante 1 chip. One betting round: check or bet (1 chip).
-- If bet, opponent may fold or call. Higher card wins at showdown.
+- Deck: Jack (J=0), Queen (Q=1), King (K=2). Each player gets one card; one is burned.
+- Both ante 1 chip. One betting round: check (`c`) or bet (`b`), 1 chip.
+- If bet, opponent may fold (`f`) or call (`c`). Higher card wins at showdown.
 
-**Information sets:** A player knows their own card and the public action history, but not the opponent's card. The infoset key format used throughout this project is `"<card>:<history>"` — for example, `"K:cb"` means the player holds a King and the action history is check-then-bet.
+**Game tree:** 4 non-terminal histories, 5 terminal histories, 12 infoset nodes.
 
-**Game tree:** 4 non-terminal histories, 5 terminal histories, 12 total infoset nodes.
+**Infoset key format:** `"<card>:<history>"` — e.g. `"K:cb"` (holds King, history is check-then-bet).
+
+```bash
+PYTHONPATH=. python kuhn/kuhn_poker.py   # sanity checks
+```
+
+**Tests:** 34 passing — card constants, terminal detection, turn order, legal actions, payoffs, infoset keys, deal enumeration, game tree structure.
 
 ---
 
 ## Phase 2 — CFR on Kuhn Poker
+
+```bash
+PYTHONPATH=. python kuhn/cfr.py          # trains 10,000 iterations, prints strategy
+python -m pytest tests/ -v               # 52 tests passing
+```
 
 ### Results after 10,000 iterations
 
@@ -117,79 +122,121 @@ Kuhn Poker is a 3-card, 2-player poker variant introduced by Harold Kuhn in 1950
 | `J:b` | fold 100% | Jack folds to a bet |
 | `K:c` | bet 100% | King always bets after a check |
 | `J:c` | bet 34% | Jack bluffs after opponent checks |
-| `Q:cb` | call 54% | Queen calls check-bet often enough |
+| `Q:cb` | call 54% | Queen calls check-bet often enough to deter bluffs |
 
-**Game value:** −1/18 ≈ −0.0556 chips per hand for Player 1. Acting first in Kuhn Poker is a slight *disadvantage* — your bet reveals information about your hand strength without gaining enough in return.
+**Game value:** −1/18 ≈ −0.0556 chips per hand for Player 1. Acting first is a slight *disadvantage* in Kuhn Poker — your bet reveals hand strength without gaining enough in return. Known result from Kuhn (1950).
+
+**Linear weighting:** `strategy_sum` at iteration `t` is multiplied by `t`, so later (more accurate) iterations dominate the average. Improves convergence speed without changing guarantees.
+
+---
+
+## Phase 3 — Exploitability Analysis
+
+```bash
+PYTHONPATH=. python kuhn/analysis.py     # trains + generates plots in kuhn/plots/
+```
+
+**Exploitability** measures distance from Nash:
+
+```
+e(σ) = BR₁_value − BR₂_value
+```
+
+Zero at Nash. The best-response computation is done at the *infoset level* — a player cannot condition on the opponent's private card, so action values must be averaged weighted by opponent reach probability before selecting the best action.
 
 ### Convergence
 
-![CFR Convergence](kuhn/plots/convergence.png)
+![Kuhn Convergence](kuhn/plots/convergence.png)
 
-Exploitability (how much an adversary could gain by deviating from the strategy) converges toward zero as iterations increase, consistent with the O(1/√T) bound proven in Theorem 3 of Zinkevich et al.
+Exploitability (top panel) converges to zero on a log scale, consistent with the O(1/√T) bound in Theorem 3 of Zinkevich et al. Player 1's EV (bottom panel) stabilises at −1/18 ≈ −0.0556.
 
 ### Strategy Heatmap
 
-![Strategy Heatmap](kuhn/plots/strategy_heatmap.png)
+![Kuhn Strategy Heatmap](kuhn/plots/strategy_heatmap.png)
+
+Rows are the 12 infosets; columns are passive (check/fold) vs aggressive (bet/call) action probabilities. The King's row is fully green (always aggressive), the Queen's first-action row is fully red (always passive), and the Jack's bluffing rows show intermediate values.
 
 ---
 
-## Phase 3 — Validation and Analysis
+## Phase 4 — Leduc Poker
 
-**Exploitability** measures how far a strategy is from Nash equilibrium:
+Leduc Poker (Southey et al., 2005) is the standard two-round benchmark with a community card.
 
+**Rules:**
+- Deck: J, J, Q, Q, K, K (6 cards, two of each rank)
+- Both ante 1 chip. Round 1 bet size = 2, max 1 raise.
+- Community card dealt face-up between rounds (chance node).
+- Round 2 bet size = 4, max 1 raise.
+- Showdown: pair (private matches community) beats non-pair; otherwise higher rank wins.
+
+**Action characters:** `c`=check, `b`=bet, `k`=call, `r`=raise, `f`=fold. (`k` for call avoids collision with `c`=check.)
+
+**History format:** `"<r1_actions>/<community>/<r2_actions>"` — e.g. `"bk/Q/br"`.
+
+**Infoset key format:** `"<rank>/<community_or_->:<history>"` — e.g. `"K/-:b"` (round 1), `"K/J:bk/J/c"` (round 2).
+
+**Dealing model:** The 6-card deck yields 30 ordered private deals. CFR iterates over all 30 uniformly — same-rank pairs (JJ, QQ, KK) appear twice, giving them correct probability weight of 2/30 vs 4/30 for mixed-rank pairs. The community card is conditioned on which two cards were already dealt.
+
+```bash
+PYTHONPATH=. python leduc/leduc_poker.py   # sanity checks (30 deals, payoffs, etc.)
+PYTHONPATH=. python leduc/cfr.py           # trains 1,000 iterations
+PYTHONPATH=. python leduc/analysis.py      # trains + generates 3 plots
 ```
-e(σ) = (BR₁ value − Nash value) + (BR₂ value − Nash value)
-```
 
-where BR_i is the best-response value for player i against the opponent's fixed strategy. At Nash equilibrium, `e(σ) = 0`.
+### Results after 1,000 iterations
 
-**Key validation result:** The stored Nash equilibrium has exploitability < 0.003, confirming it is within numerical tolerance of a true Nash equilibrium. CFR exploitability decreases monotonically with iterations.
+- **288 infoset nodes** (vs 12 in Kuhn)
+- **EV converging** from ~−0.35 to ~−0.28 (no closed-form Nash EV for Leduc)
+- Training time: ~40s per 1,000 iterations on a standard machine
 
-**Important finding during development:** Exploitability must be computed at the *infoset level*, not the deal level. A player cannot condition their action on the opponent's private card — their best response must be the same across all deals consistent with a given infoset. Averaging action values weighted by opponent reach probability across deals before selecting the best action is the correct approach.
+### Convergence
+
+![Leduc Convergence](leduc/plots/convergence.png)
+
+EV decreasing toward Nash as iterations increase.
+
+### Strategy by Round
+
+![Leduc Strategy by Round](leduc/plots/strategy_by_round.png)
+
+Side-by-side heatmaps: Round 1 infosets (left) and Round 2 infosets (right). Each row is one infoset; columns show passive vs aggressive action probability. The pair-making effect in Round 2 is clearly visible — infosets where the player holds a pair become deeply green (very aggressive).
+
+### Community Card Effect
+
+![Leduc Community Card Effect](leduc/plots/community_card_effect.png)
+
+Round 2 aggression probability broken down by private card (J/Q/K) × community card. The spike when private card matches community card (pair made) is clearly visible in each subplot — the pair-making community card (highlighted in red border) triggers dramatically higher aggression.
+
+**Key design difference from Kuhn:** The `LeducCFRTrainer` handles the chance node between rounds by iterating over all possible community cards weighted by their posterior probability, inside `_collect_updates()`. No changes to the two-pass architecture or the `Node` class were needed.
 
 ---
 
-## Setup
+## Running Tests
 
 ```bash
-git clone https://github.com/RyanArpin/cfr-poker.git
-cd cfr-poker
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python -m pytest tests/ -v    # 52 tests, all passing
 ```
 
-**Run the solver:**
-```bash
-PYTHONPATH=. python kuhn/cfr.py
-```
-
-**Generate convergence plots:**
-```bash
-PYTHONPATH=. python kuhn/analysis.py
-```
-
-**Run tests:**
-```bash
-python -m pytest tests/ -v
-```
+Tests cover: card constants, terminal detection, turn order, legal actions, payoffs for all deals and histories, infoset key format, deal enumeration, CFR convergence to Nash EV, Nash strategy properties (King always bets, Queen never opens, Jack bluffs 1/3), two-pass atomicity.
 
 ---
 
 ## Roadmap
 
-- [x] Phase 1 — Kuhn Poker game environment
-- [x] Phase 2 — Vanilla CFR following Zinkevich et al. (2007)
+- [x] Phase 1 — Kuhn Poker game environment (34 tests)
+- [x] Phase 2 — Vanilla CFR following Zinkevich et al. (2007) (18 tests)
 - [x] Phase 3 — Exploitability analysis and convergence plots
-- [ ] Phase 4 — Leduc Poker (two betting rounds, community card)
-- [ ] Phase 5 — Heads-Up Texas Hold'em with Monte Carlo CFR
-- [ ] Phase 6 — FastAPI backend serving GTO strategies
+- [x] Phase 4 — Leduc Poker (two betting rounds, community card, chance node)
+- [ ] Phase 5 — Heads-Up Texas Hold'em with Monte Carlo CFR (external sampling)
+- [ ] Phase 6 — FastAPI backend serving trained GTO strategies
 - [ ] Phase 7 — React + Tailwind frontend with interactive card selection
 
 ---
 
 ## References
 
-Zinkevich, M., Johanson, M., Bowling, M., & Piccione, C. (2007). Regret Minimization in Games with Incomplete Information. *Advances in Neural Information Processing Systems 20.* https://proceedings.neurips.cc/paper/2007/file/08d98638c6a1e74d5d7506fd2fe68c53-Paper.pdf
+Zinkevich, M., Johanson, M., Bowling, M., & Piccione, C. (2007). **Regret Minimization in Games with Incomplete Information.** *Advances in Neural Information Processing Systems 20 (NeurIPS 2007).* https://proceedings.neurips.cc/paper/2007/file/08d98638c6a1e74d5d7506fd2fe68c53-Paper.pdf
 
 Kuhn, H. W. (1950). A simplified two-person poker. In H. W. Kuhn & A. W. Tucker (Eds.), *Contributions to the Theory of Games*, Vol. 1, pp. 97–103. Princeton University Press.
+
+Southey, F., Bowling, M., Larson, B., Piccione, C., Burch, N., Billings, D., & Rayner, C. (2005). **Bayes' Bluff: Opponent Modelling in Poker.** *Proceedings of the 21st Conference on Uncertainty in Artificial Intelligence (UAI 2005).*
