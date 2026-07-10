@@ -205,9 +205,8 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
-# Generated plot directories
-kuhn/plots/
-leduc/plots/
+# Generated plot directories — excluded from git to keep repo lightweight
+# Note: plots/ dirs are NOT ignored so README image links work on GitHub
 
 # Ruff stuff:
 .ruff_cache/

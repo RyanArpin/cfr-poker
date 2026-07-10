@@ -57,7 +57,14 @@ cfr-poker/
 │       ├── convergence.png
 │       ├── strategy_by_round.png
 │       └── community_card_effect.png
-├── holdem/               # Phase 5 — Monte Carlo CFR
+├── holdem/
+│   ├── holdem_poker.py   # Game environment: 52-card deck, card abstraction, 8 buckets
+│   ├── cfr.py            # External Sampling MCCFR (Lanctot et al. 2009)
+│   ├── analysis.py       # Exploitability estimate, strategy heatmaps, bucket distribution
+│   └── plots/
+│       ├── convergence.png
+│       ├── strategy_by_street.png
+│       └── bucket_distribution.png
 ├── backend/              # Phase 6 — FastAPI REST API
 ├── tests/
 │   ├── test_kuhn_poker.py    # 34 tests — game environment
@@ -211,10 +218,69 @@ Round 2 aggression probability broken down by private card (J/Q/K) × community 
 
 ---
 
-## Running Tests
+## Phase 5 — Heads-Up Texas Hold'em with Monte Carlo CFR
+
+Texas Hold'em is the dominant form of modern poker and the target of serious GTO solvers.  The full game tree is intractable for exact CFR (~10¹⁴ information sets), so two techniques make it tractable here:
+
+**Card abstraction:** Map each player's hand (2 hole cards + up to 5 community cards) to one of 8 hand-strength buckets rather than tracking exact cards.
+
+| Bucket | Hand |
+|---|---|
+| 0 | High card |
+| 1 | One pair |
+| 2 | Two pair |
+| 3 | Three of a kind |
+| 4 | Straight |
+| 5 | Flush |
+| 6 | Full house |
+| 7 | Four of a kind / Straight flush |
+
+**External Sampling Monte Carlo CFR (Lanctot et al., 2009):** Instead of traversing the full tree on every iteration, sample one deal and one line for the opponent per traversal.  The traversing player still iterates over all their own actions (like vanilla CFR).  Cost per iteration drops from O(|tree|) to O(depth), enabling 10,000+ iterations in under a minute.
+
+**Rules:**
+- 52-card deck. P1 = small blind (1 chip), P2 = big blind (2 chips).
+- 2 hole cards private, 5 community cards dealt in stages: flop (3), turn (1), river (1).
+- 4 betting streets: preflop, flop, turn, river. Bet sizes: preflop/flop = 2, turn/river = 4. One raise per street.
+- Action characters: `c`=check, `k`=call, `b`=bet, `r`=raise, `f`=fold.
+- History format: `"<preflop>|<flop>|<turn>|<river>"` — streets separated by `|`.
+- Infoset key: `"<bucket>:<history>"` — bucket abstracts exact cards.
 
 ```bash
-python -m pytest tests/ -v    # 52 tests, all passing
+PYTHONPATH=. python holdem/holdem_poker.py   # sanity checks + bucket distribution
+PYTHONPATH=. python holdem/cfr.py            # trains 10,000 iterations
+PYTHONPATH=. python holdem/analysis.py       # trains + generates 3 plots
+```
+
+### Results after 10,000 iterations
+
+- **~2,700 infoset nodes** discovered (tractable thanks to card abstraction)
+- Training time: ~45s for 10,000 iterations
+- EV converges toward 0 (symmetric game under abstraction)
+
+### Convergence
+
+![Hold'em Convergence](holdem/plots/convergence.png)
+
+Exploitability estimate (top panel) decreases as iterations increase, approaching the target of ≤ 0.1 chips. The MC noise is visible — MCCFR converges noisily compared to vanilla CFR, but the trend is clear.
+
+### Strategy by Street
+
+![Hold'em Strategy by Street](holdem/plots/strategy_by_street.png)
+
+Four heatmaps — one per betting street. Rows are hand buckets (0=high card, 7=quads/SF), columns are fold/call/raise probabilities. The pattern is intuitive: stronger buckets (bottom rows) are more aggressive on every street.
+
+### Hand Bucket Distribution
+
+![Hold'em Bucket Distribution](holdem/plots/bucket_distribution.png)
+
+River bucket frequencies across 50,000 random deals. One pair (~44%) and high card (~17%) dominate, matching real poker statistics. Strong hands (flush, full house, quads) are rare — their strategy signals are therefore noisier in the heatmap.
+
+**Key algorithmic difference from Leduc:** External sampling means only one sampled deal is used per iteration, so regrets are updated immediately after each traversal (not batched). The `Node` class and regret matching are identical to Kuhn and Leduc.
+
+---
+
+```bash
+python -m pytest tests/ -v    # 124 tests, all passing
 ```
 
 Tests cover: card constants, terminal detection, turn order, legal actions, payoffs for all deals and histories, infoset key format, deal enumeration, CFR convergence to Nash EV, Nash strategy properties (King always bets, Queen never opens, Jack bluffs 1/3), two-pass atomicity.
@@ -227,7 +293,7 @@ Tests cover: card constants, terminal detection, turn order, legal actions, payo
 - [x] Phase 2 — Vanilla CFR following Zinkevich et al. (2007) (18 tests)
 - [x] Phase 3 — Exploitability analysis and convergence plots
 - [x] Phase 4 — Leduc Poker (two betting rounds, community card, chance node)
-- [ ] Phase 5 — Heads-Up Texas Hold'em with Monte Carlo CFR (external sampling)
+- [x] Phase 5 — Heads-Up Texas Hold'em with External Sampling Monte Carlo CFR
 - [ ] Phase 6 — FastAPI backend serving trained GTO strategies
 - [ ] Phase 7 — React + Tailwind frontend with interactive card selection
 
@@ -240,3 +306,5 @@ Zinkevich, M., Johanson, M., Bowling, M., & Piccione, C. (2007). **Regret Minimi
 Kuhn, H. W. (1950). A simplified two-person poker. In H. W. Kuhn & A. W. Tucker (Eds.), *Contributions to the Theory of Games*, Vol. 1, pp. 97–103. Princeton University Press.
 
 Southey, F., Bowling, M., Larson, B., Piccione, C., Burch, N., Billings, D., & Rayner, C. (2005). **Bayes' Bluff: Opponent Modelling in Poker.** *Proceedings of the 21st Conference on Uncertainty in Artificial Intelligence (UAI 2005).*
+
+Lanctot, M., Waugh, K., Zinkevich, M., & Bowling, M. (2009). **Monte Carlo Sampling for Regret Minimization in Extensive Games.** *Advances in Neural Information Processing Systems 22 (NeurIPS 2009).*
