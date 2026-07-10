@@ -119,13 +119,16 @@ def exploitability_estimate(
 def train_and_track(
     iterations   : int = 10_000,
     sample_every : int = 500,
-) -> tuple[list[int], list[float], list[float]]:
+) -> tuple[list[int], list[float], list[float], "HoldemCFRTrainer"]:
     """
     Train MCCFR and record EV + exploitability estimates at intervals.
 
     Returns
     -------
-    (iteration_points, exploit_estimates, ev_estimates)
+    (iteration_points, exploit_estimates, ev_estimates, trainer)
+
+    The trainer is returned so the caller can extract the learned strategy
+    for plotting without running a second expensive training pass.
     """
     game    = HoldemPoker()
     trainer = HoldemCFRTrainer()
@@ -145,11 +148,11 @@ def train_and_track(
 
         strategy = trainer.get_strategy()
 
-        # Smooth EV over last 100 samples to reduce MC noise
-        window  = min(100, len(ev_history))
+        # Smooth EV over last 500 samples to reduce MC noise
+        window  = min(500, len(ev_history))
         ev_est  = sum(ev_history[-window:]) / window
 
-        exploit = exploitability_estimate(game, strategy, n_samples=50)
+        exploit = exploitability_estimate(game, strategy, n_samples=200)
 
         iteration_points.append(completed)
         exploit_values.append(exploit)
@@ -164,7 +167,7 @@ def train_and_track(
     print(f"Final EV estimate:      {ev_values[-1]:.4f}")
     print(f"Infoset nodes:          {len(trainer.nodes):,}")
     print(f"Target:                 ≤ {HOLDEM_EXPLOITABILITY_TARGET}")
-    return iteration_points, exploit_values, ev_values
+    return iteration_points, exploit_values, ev_values, trainer
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -209,7 +212,7 @@ def plot_convergence(
     ax1.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
 
     ax2.plot(iteration_points, ev_values,
-             color="#16a34a", linewidth=2, label="P1 EV estimate (100-iter avg)")
+             color="#16a34a", linewidth=2, label="P1 EV estimate (500-iter avg)")
     ax2.axhline(y=0, color="#dc2626", linestyle="--", linewidth=1.2,
                 label="EV = 0")
     ax2.set_xlabel("Iterations", fontsize=11)
@@ -358,49 +361,14 @@ def plot_bucket_distribution(
 # ─────────────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import time
+    # ── Single training pass: track convergence and collect strategy ──────────
+    iters, exploit, ev, trainer = train_and_track(
+        iterations=10_000, sample_every=1_000
+    )
+    strategy = trainer.get_strategy()
 
-    game    = HoldemPoker()
-    trainer = HoldemCFRTrainer()
-
-    iterations   = 10_000
-    sample_every = 1_000   # only record EV snapshots, no BR calls mid-training
-
-    print(f"Training Hold'em MCCFR for {iterations:,} iterations...")
-
-    iteration_points = []
-    ev_values        = []
-
-    start     = time.time()
-    completed = 0
-    while completed < iterations:
-        chunk      = min(sample_every, iterations - completed)
-        ev_history = trainer.train(iterations=chunk)
-        completed += chunk
-
-        window  = min(100, len(ev_history))
-        ev_est  = sum(ev_history[-window:]) / window
-        iteration_points.append(completed)
-        ev_values.append(ev_est)
-        print(f"  iter {completed:>7,}  |  EV ≈ {ev_est:.4f}  |  nodes: {len(trainer.nodes):,}")
-
-    elapsed = time.time() - start
-    print(f"\nTraining done in {elapsed:.1f}s")
-
-    # ── Compute exploitability ONCE at the end (50 samples) ──────────────────
-    print("Computing final exploitability estimate (50 samples)...")
-    strategy     = trainer.get_strategy()
-    final_exploit = exploitability_estimate(game, strategy, n_samples=50)
-    exploit_values = [None] * (len(iteration_points) - 1) + [final_exploit]
-
-    print(f"Final exploit estimate: {final_exploit:.4f}")
-    print(f"Final EV estimate:      {ev_values[-1]:.4f}")
-    print(f"Infoset nodes:          {len(trainer.nodes):,}")
-
-    # ── Plots ─────────────────────────────────────────────────────────────────
-    # For convergence plot, use EV only (exploit is only available at the end)
-    plot_convergence(iteration_points, [final_exploit] * len(iteration_points),
-                     ev_values)
+    # ── Generate all plots from the same trained model ────────────────────────
+    plot_convergence(iters, exploit, ev)
     plot_strategy_by_street(strategy)
     plot_bucket_distribution()
 
