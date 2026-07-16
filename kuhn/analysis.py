@@ -253,8 +253,6 @@ def plot_convergence(
     exploit_plot = [max(v, 1e-6) for v in exploit_values]
     ax1.plot(iteration_points, exploit_plot,
              color="#2563eb", linewidth=2, label="Exploitability e(σ)")
-    ax1.axhline(y=0, color="#dc2626", linestyle="--", linewidth=1.2,
-                label="Nash equilibrium (e = 0)")
     ax1.set_yscale("log")
     ax1.set_xlabel("Iterations", fontsize=11)
     ax1.set_ylabel("Exploitability (log scale)", fontsize=11)
@@ -265,8 +263,6 @@ def plot_convergence(
 
     ax2.plot(iteration_points, ev_values,
              color="#16a34a", linewidth=2, label="P1 EV (average strategy)")
-    ax2.axhline(y=KUHN_GAME_VALUE, color="#dc2626", linestyle="--", linewidth=1.2,
-                label=f"Nash EV = {KUHN_GAME_VALUE:.4f}")
     ax2.set_xlabel("Iterations", fontsize=11)
     ax2.set_ylabel("Expected Value (chips)", fontsize=11)
     ax2.set_title("Player 1 Expected Value vs Nash Equilibrium", fontsize=11)
