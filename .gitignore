@@ -208,6 +208,10 @@ tempCodeRunnerFile.py
 # Generated plot directories — excluded from git to keep repo lightweight
 # Note: plots/ dirs are NOT ignored so README image links work on GitHub
 
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
 # Ruff stuff:
 .ruff_cache/
 
