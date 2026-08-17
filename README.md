@@ -6,6 +6,13 @@ Counterfactual Regret Minimization (CFR) implemented from scratch in Python, fol
 
 ---
 
+## Live Demo
+
+- **Frontend:** [cfr-poker.vercel.app](https://cfr-poker.vercel.app) *(placeholder — update after deploy)*
+- **API docs:** [cfr-poker-api.onrender.com/docs](https://cfr-poker-api.onrender.com/docs) *(placeholder — update after deploy)*
+
+---
+
 ## What is CFR?
 
 CFR is the algorithm behind modern poker solvers (PioSOLVER, GTO+, etc.). The idea: play a game thousands of times, track how much you *regret* not having taken a different action at each decision point, and shift your strategy toward actions you regret not taking. The average strategy over all iterations converges to a Nash equilibrium — proven in Theorem 3 of Zinkevich et al.
@@ -61,6 +68,24 @@ cfr-poker/
 │   ├── main.py           # FastAPI app — REST endpoints for querying GTO strategies
 │   ├── models.py         # Pydantic request/response models
 │   └── run.py            # Uvicorn entry point
+├── frontend/
+│   ├── src/
+│   │   ├── App.tsx           # Root component — holds all state, wires everything together
+│   │   ├── api.ts            # Typed fetch wrappers for the backend REST API
+│   │   ├── types.ts          # Shared TypeScript types (Game, StrategyResponse, etc.)
+│   │   └── components/
+│   │       ├── GameSelector.tsx     # Kuhn / Leduc toggle
+│   │       ├── TrainButton.tsx      # Triggers training, shows spinner
+│   │       ├── CardSelector.tsx     # Private + community card picker
+│   │       ├── HistoryBuilder.tsx   # Legal-action history builder with breadcrumb
+│   │       ├── StrategyDisplay.tsx  # GTO probability bars per action
+│   │       └── StatsBar.tsx         # Nodes / EV / exploitability
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   └── vercel.json           # SPA routing config for Vercel
+├── render.yaml           # Render deployment config for the backend
 ├── tests/
 │   ├── test_kuhn_poker.py    # 34 tests — game environment
 │   ├── test_cfr_trainer.py   # 18 tests — CFR algorithm and Nash convergence
@@ -76,8 +101,8 @@ cfr-poker/
 ```bash
 git clone https://github.com/RyanArpin/cfr-poker.git
 cd cfr-poker
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -226,6 +251,30 @@ curl http://localhost:8000/health
 
 ---
 
+## Phase 6 — React Frontend
+
+An interactive single-page app for exploring the solved GTO strategies, built with React + TypeScript + Tailwind CSS (Vite).
+
+**Features:**
+- **Interactive card selector** — pick your private card (J / Q / K) and, in Leduc, the community card once Round 1 closes. Cards render as playing cards.
+- **Action history builder** — click through the game tree with only the legal actions surfaced at each step (Check / Bet / Call / Raise / Fold). A breadcrumb shows the readable history and Leduc round transitions.
+- **GTO strategy bars** — the solver's action probabilities for the selected infoset, drawn as colored horizontal bars with percentage labels.
+- **Live stats** — nodes trained, game value (EV), and exploitability, with a color-coded exploitability badge (green < 0.01, yellow < 0.05, red otherwise).
+
+The app talks to the FastAPI backend: it triggers training, fetches the full strategy, and looks up infoset keys client-side as you build a hand.
+
+### Running the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev   # opens http://localhost:5173
+```
+
+Make sure the backend is running at `http://localhost:8000` first (see Phase 5). The API base URL is configured via `VITE_API_URL` in `frontend/.env`.
+
+---
+
 ## Running Tests
 
 ```bash
@@ -241,7 +290,30 @@ python -m pytest tests/ -v    # 124 tests, all passing
 - [x] Phase 3 — Exploitability analysis and convergence plots
 - [x] Phase 4 — Leduc Poker (two betting rounds, community card, chance node)
 - [x] Phase 5 — FastAPI backend serving GTO strategies
-- [ ] Phase 6 — React + Tailwind frontend with interactive card selection
+- [x] Phase 6 — React + Tailwind frontend with interactive strategy explorer
+
+---
+
+## Deployment
+
+### Backend → Render
+
+1. Push the repo to GitHub
+2. Create a new **Web Service** on [render.com](https://render.com)
+3. Connect the GitHub repo
+4. Render auto-detects `render.yaml` — settings are pre-configured:
+   - Build: `pip install -r requirements.txt`
+   - Start: `PYTHONPATH=. uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+5. After deploy, update `frontend/.env.production` with the live Render URL
+
+### Frontend → Vercel
+
+1. Create a new project on [vercel.com](https://vercel.com)
+2. Set the **Root Directory** to `frontend`
+3. Framework preset: **Vite**
+4. Set environment variable: `VITE_API_URL` = your Render backend URL
+5. Deploy — Vercel auto-builds with `npm run build`
+6. The `vercel.json` handles SPA routing (all paths → `index.html`)
 
 ---
 
