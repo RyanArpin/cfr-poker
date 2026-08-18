@@ -108,7 +108,7 @@ PYTHONPATH=. python kuhn/analysis.py   # train + generate plots
 
 ### Results after 10,000 iterations
 
-These are the solver-produced values — compare against the analytical Nash table above.
+These are the solver-produced values. They match the analytical Nash equilibrium from the [Nash Equilibrium Reference](#nash-equilibrium-reference) section above — for example, the King value-bets, the Queen never opens, and the Jack bluffs about a third of the time.
 
 | Infoset | Strategy | Interpretation |
 |---|---|---|
