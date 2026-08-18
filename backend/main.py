@@ -58,7 +58,7 @@ trained_strategies: dict[str, dict] = {}
 trained_ev: dict[str, float] = {}
 
 # Iteration caps to prevent accidental long-running requests
-ITER_DEFAULTS = {"kuhn": 10_000, "leduc": 1_000}
+ITER_DEFAULTS = {"kuhn": 10_000, "leduc": 500}
 ITER_CAPS     = {"kuhn": 100_000, "leduc": 10_000}
 
 
@@ -82,11 +82,14 @@ def train(request: TrainRequest):
 
     if game == "kuhn":
         trainer = CFRTrainer()
+        ev_history = trainer.train(iterations=iterations)
     else:
         trainer = LeducCFRTrainer()
+        # Fast path: skip per-iteration EV evaluation (a full tree traversal)
+        # so training stays within the HTTP timeout on constrained CPU.
+        ev_history = trainer.train(iterations=iterations, track_ev=False)
 
-    ev_history = trainer.train(iterations=iterations)
-    strategy   = trainer.get_strategy()
+    strategy = trainer.get_strategy()
 
     trained_trainers[game]   = trainer
     trained_strategies[game] = strategy

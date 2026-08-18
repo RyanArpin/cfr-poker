@@ -81,7 +81,7 @@ class LeducCFRTrainer:
 
     # ── Training loop ─────────────────────────────────────────────────────────
 
-    def train(self, iterations: int = 1_000) -> list[float]:
+    def train(self, iterations: int = 1_000, track_ev: bool = True) -> list[float]:
         """
         Run CFR for `iterations` iterations.
 
@@ -92,17 +92,31 @@ class LeducCFRTrainer:
              nodes yet.  Community card enumeration happens inside
              _collect_updates at the chance node.
           3. Apply all updates atomically.
-          4. Evaluate the current average strategy EV and record it.
+          4. (Optional) Evaluate the current average strategy EV and record it.
 
         Linear weighting: strategy_sum at iteration t is weighted by t so
         later (more accurate) iterations dominate the average.  Matches
         the approach in kuhn/cfr.py.
 
+        Parameters
+        ----------
+        iterations : int
+            Number of CFR iterations to run.
+        track_ev : bool
+            When True (default), evaluate the average-strategy EV every
+            iteration and record the full convergence history — this is the
+            behaviour the __main__ block and tests rely on.  When False, skip
+            the expensive per-iteration full-tree traversal entirely and
+            compute the EV only once after the loop, returning a
+            single-element list `[final_ev]`.  Use the fast path when only the
+            final strategy matters (e.g. serving requests on constrained CPU).
+
         Returns
         -------
         list[float]
             Player 1's expected value of the average strategy after each
-            iteration.
+            iteration (track_ev=True), or a single-element list with the final
+            EV (track_ev=False).
         """
         ev_history = []
 
@@ -139,7 +153,12 @@ class LeducCFRTrainer:
                 self.nodes[key].regret_sum   += regret_delta
                 self.nodes[key].strategy_sum += strategy_delta
 
-            # ── Step 4: record EV of average strategy ─────────────────────────
+            # ── Step 4: record EV of average strategy (optional) ──────────────
+            if track_ev:
+                ev_history.append(self._evaluate_average_strategy())
+
+        # Fast path: compute EV once after the loop instead of every iteration.
+        if not track_ev:
             ev_history.append(self._evaluate_average_strategy())
 
         return ev_history
