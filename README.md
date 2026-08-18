@@ -6,6 +6,20 @@ Counterfactual Regret Minimization (CFR) implemented from scratch in Python, fol
 
 ---
 
+## Demo
+
+### Kuhn Poker
+
+![Kuhn Poker demo](docs/kuhn-demo.gif)
+
+### Leduc Poker
+
+![Leduc Poker demo](docs/leduc-demo.gif)
+
+**Live demo:** [cfr-poker.vercel.app](https://cfr-poker.vercel.app) — *the backend runs on Render's free tier and sleeps after inactivity, so the first "Train" request can take ~50s to wake up.*
+
+---
+
 ## Live Demo
 
 - **Frontend:** [cfr-poker.vercel.app](https://cfr-poker.vercel.app) *(placeholder — update after deploy)*
@@ -42,6 +56,33 @@ All nodes must see the **same strategy profile** within one iteration. Updating 
 1. **Freeze** the current strategy profile as a snapshot
 2. **Collect** all regret and strategy deltas across all deals — without writing to nodes
 3. **Apply** all updates atomically after the full sweep
+
+---
+
+## Nash Equilibrium Reference
+
+### Kuhn Poker — analytical equilibrium
+
+Unlike most games, Kuhn Poker has a *known closed-form* Nash equilibrium (Kuhn, 1950). It is not a single strategy but a one-parameter family, parameterized by a bluff frequency `α ∈ [0, 1/3]`.
+
+| Infoset | Meaning | Nash Strategy |
+|---|---|---|
+| `J:` | P1 opens with Jack | bet with prob `α` (≤ 1/3), else check |
+| `Q:` | P1 opens with Queen | always check |
+| `K:` | P1 opens with King | bet with prob `3α` |
+| `J:b` | P1 Jack facing a bet | always fold |
+| `Q:b` | P1 Queen facing a bet | call with prob 1/3 |
+| `K:b` | P1 King facing a bet | always call |
+| `J:c` | P1 Jack after opponent checks | bet with prob 1/3 |
+| `Q:c` | P1 Queen after opponent checks | always check |
+| `K:c` | P1 King after opponent checks | always bet |
+| `Q:cb` | P1 Queen facing check-then-bet | call with prob 1/3 |
+
+The solver converges to **one member** of this equilibrium family (which specific `α` depends on the run), and the game value is exactly **−1/18 ≈ −0.0556** for Player 1. Acting first is a slight disadvantage — a known counterintuitive result. The CFR-trained strategy in this repo matches this equilibrium to within an exploitability of **~0.005**.
+
+### Leduc Poker — no closed form
+
+Unlike Kuhn, Leduc Poker has **no closed-form Nash equilibrium**. The two-round structure with a community card dealt between rounds makes it analytically intractable — which is exactly why an iterative solver like CFR is valuable. This implementation discovers **~288 information sets** and converges to a low-exploitability approximate equilibrium. The learned strategy shows the expected qualitative behaviour: aggression spikes when the private card pairs with the community card (visible in the Community Card Effect plot below).
 
 ---
 
@@ -137,6 +178,8 @@ python -m pytest tests/ -v               # 124 tests passing
 ```
 
 ### Results after 10,000 iterations
+
+> These are the **solver-produced** values from an actual training run — compare them against the analytical Nash Equilibrium Reference table above.
 
 | Infoset | Strategy | Interpretation |
 |---|---|---|
