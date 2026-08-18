@@ -122,7 +122,11 @@ These are the solver-produced values — compare against the analytical Nash tab
 | `J:c` | bet 34% | Jack bluffs after opponent checks |
 | `Q:cb` | call 54% | Queen calls check-bet often enough to deter bluffs |
 
-Plots are saved to [`kuhn/plots/`](kuhn/plots/) — a convergence chart (`convergence.png`) and a strategy heatmap (`strategy_heatmap.png`).
+### Strategy heatmap
+
+![Kuhn Strategy Heatmap](kuhn/plots/strategy_heatmap.png)
+
+The convergence chart is saved to [`kuhn/plots/convergence.png`](kuhn/plots/convergence.png).
 
 ---
 
